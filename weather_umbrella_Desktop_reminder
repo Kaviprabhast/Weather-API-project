@@ -15,7 +15,6 @@ weather_data = {
     "description": None,
     "temperature": None
 }
-
 # Function to get weather data by scraping Google search results
 def get_weather(city):
     headers = {
