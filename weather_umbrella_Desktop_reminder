@@ -1,0 +1,186 @@
+import requests
+from bs4 import BeautifulSoup
+from plyer import notification
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageTk
+from pymongo import MongoClient
+
+# Connect to MongoDB
+client = MongoClient("mongodb://localhost:27017")
+db = client["Weather_db"]
+collection = db["weather_data"]
+weather_data = {
+    "city": None,
+    "description": None,
+    "temperature": None
+}
+
+# Function to get weather data by scraping Google search results
+def get_weather(city):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    search_url = f"https://www.google.com/search?q=weather+{city.replace(' ', '+')}"
+    response = requests.get(search_url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Extract weather description
+    description_element = soup.find('span', id='wob_dc')
+    if description_element:
+        weather_data['description'] = description_element.text.lower()
+    
+    # Extract temperature
+    temperature_element = soup.find('span', id='wob_tm')
+    if temperature_element:
+        weather_data['temperature'] = temperature_element.text
+    
+    # Add city to weather data
+    weather_data['city'] = city
+    
+    return weather_data
+
+# Function to check if it will rain
+def will_it_rain(weather_data):
+    return 'rain' in weather_data['description']
+
+# Function to send desktop notification
+def send_notification(title, message):
+    notification.notify(
+        title=title,
+        message=message,
+        app_name='Umbrella Reminder',
+        timeout=10
+    )
+
+# Function to handle login
+def login_user():
+    username = login_username_entry.get()
+    password = login_password_entry.get()
+    if username and password:
+        login_frame.pack_forget()
+        weather_frame.pack(padx=20, pady=20)
+    else:
+        messagebox.showwarning("Input Error", "Please enter a valid username and password.")
+
+# Function to handle sign-up
+def sign_up_user():
+    username = signup_username_entry.get()
+    password = signup_password_entry.get()
+    confirm_password = signup_confirm_password_entry.get()
+    if username and password and confirm_password:
+        if password == confirm_password:
+            messagebox.showinfo("Success", "User registered successfully!")
+            signup_frame.pack_forget()
+            login_frame.pack(padx=20, pady=20)
+        else:
+            messagebox.showerror("Error", "Passwords do not match.")
+    else:
+        messagebox.showwarning("Input Error", "Please fill out all fields.")
+
+# Function to switch to sign-up frame
+def show_signup_frame():
+    login_frame.pack_forget()
+    signup_frame.pack(padx=20, pady=20)
+
+# Function to switch to login frame
+def show_login_frame():
+    signup_frame.pack_forget()
+    login_frame.pack(padx=20, pady=20)
+
+# Function to handle weather check
+def check_weather():
+    city = city_entry.get()
+    if city:
+        weather_data = get_weather(city)
+        if weather_data['description']:
+            # Save the weather data to MongoDB
+            collection.insert_one(weather_data)
+            
+            if will_it_rain(weather_data):
+                title = "Umbrella Reminder"
+                message = f"It looks like it's going to rain today in {weather_data['city'].capitalize()}. Don't forget to take an umbrella!\n\nWeather: {weather_data['description'].capitalize()}\nTemperature: {weather_data['temperature']}°C"
+                send_notification(title, message)
+                messagebox.showinfo("Umbrella Reminder", message)
+            else:
+                message = f"No rain expected today in {weather_data['city'].capitalize()}.\n\nWeather: {weather_data['description'].capitalize()}\nTemperature: {weather_data['temperature']}°C"
+                send_notification("Weather Info", message)
+                messagebox.showinfo("Weather Info", message)
+        else:
+            messagebox.showerror("Error", "Could not retrieve weather information.")
+    else:
+        messagebox.showwarning("Input Error", "Please enter a city name.")
+
+# Setting up the GUI
+root = tk.Tk()
+root.title("Login and Weather Report")
+root.geometry("200x200")
+
+# Center the window on the screen
+window_width = 400
+window_height = 400
+
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+center_x = int(screen_width/2 - window_width/2)
+center_y = int(screen_height/2 - window_height/2)
+
+root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+
+font_large = ('Arial', 16)
+font_medium = ('Arial', 14)
+
+# Load background images
+login_bg_image = ImageTk.PhotoImage(Image.open("login_bg.jpg").resize((400, 400), Image.Resampling.LANCZOS))
+weather_bg_image = ImageTk.PhotoImage(Image.open("weather_bg.jpg").resize((400, 400), Image.Resampling.LANCZOS))
+
+# Login frame
+login_frame = tk.Frame(root)
+login_frame.pack(padx=20, pady=20)
+
+login_bg_label = tk.Label(login_frame, image=login_bg_image)
+login_bg_label.place(relwidth=1, relheight=1)
+
+tk.Label(login_frame, text="Login", font=font_large, bg='lightblue').pack(pady=10)
+tk.Label(login_frame, text="Username", font=font_medium, bg='lightblue').pack()
+login_username_entry = tk.Entry(login_frame, font=font_medium, width=20)
+login_username_entry.pack(pady=5)
+tk.Label(login_frame, text="Password", font=font_medium, bg='lightblue').pack()
+login_password_entry = tk.Entry(login_frame, show="*", font=font_medium, width=20)
+login_password_entry.pack(pady=5)
+tk.Button(login_frame, text="Login", font=font_medium, command=login_user).pack(pady=10)
+tk.Button(login_frame, text="Sign Up", font=font_medium, command=show_signup_frame).pack(pady=10)
+
+# Sign-up frame
+signup_frame = tk.Frame(root)
+
+signup_bg_label = tk.Label(signup_frame, image=login_bg_image)
+signup_bg_label.place(relwidth=1, relheight=1)
+
+tk.Label(signup_frame, text="Sign Up", font=font_large, bg='lightblue').pack(pady=10)
+tk.Label(signup_frame, text="Username", font=font_medium, bg='lightblue').pack()
+signup_username_entry = tk.Entry(signup_frame, font=font_medium, width=20)
+signup_username_entry.pack(pady=5)
+tk.Label(signup_frame, text="Password", font=font_medium, bg='lightblue').pack()
+signup_password_entry = tk.Entry(signup_frame, show="*", font=font_medium, width=20)
+signup_password_entry.pack(pady=5)
+tk.Label(signup_frame, text="Confirm Password", font=font_medium, bg='lightblue').pack()
+signup_confirm_password_entry = tk.Entry(signup_frame, show="*", font=font_medium, width=20)
+signup_confirm_password_entry.pack(pady=5)
+tk.Button(signup_frame, text="Sign Up", font=font_medium, command=sign_up_user).pack(pady=10)
+tk.Button(signup_frame, text="Back to Login", font=font_medium, command=show_login_frame).pack(pady=10)
+
+# Weather frame
+weather_frame = tk.Frame(root)
+
+weather_bg_label = tk.Label(weather_frame, image=weather_bg_image)
+weather_bg_label.place(relwidth=1, relheight=1)
+
+tk.Label(weather_frame, text="Weather Report", font=font_large, bg='lightblue').pack(pady=10)
+tk.Label(weather_frame, text="Enter City Name", font=font_medium, bg='lightblue').pack()
+city_entry = tk.Entry(weather_frame, font=font_medium, width=20)
+city_entry.pack(pady=5)
+tk.Button(weather_frame, text="Get Weather", font=font_medium, command=check_weather).pack(pady=10)
+
+root.mainloop()
